@@ -9,3 +9,6 @@ COGS_DIR = BASE_DIR / "cogs"
 
 PREFIX = "t!"
 INTENTS = discord.Intents.all()
+
+STATUS = discord.Status.idle
+ACTIVITY = discord.Activity(type=discord.ActivityType.playing, name="Do /help to hire Sheepie")
