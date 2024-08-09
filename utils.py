@@ -3,6 +3,8 @@ from discord.ext import commands
 import os
 import settings
 import tickets
+from keep_alive import keep_alive
+keep_alive()
 
 async def load_cogs(bot: commands.Bot):
     await bot.load_extension("cogs.hire")
