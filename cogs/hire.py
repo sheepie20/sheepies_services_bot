@@ -120,7 +120,8 @@ class Hire(commands.Cog):
         await send_log(title="Ticket Created",
             description=f"Created by {interaction.user.mention}",
             color=discord.Color.random(),
-            guild=interaction.guild
+            guild=interaction.guild,
+            closing=False
         )
 
 
@@ -166,7 +167,8 @@ class CloseButton(View):
             description=f"Closed by: {interaction.user.mention}",
             color=discord.Color.random(),
             guild=interaction.guild,
-            file=transcript
+            closing=True
+            # file=transcript
         )
 
         await asyncio.sleep(10)
