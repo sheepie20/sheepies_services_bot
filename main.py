@@ -3,7 +3,8 @@ import settings
 from settings import utils
 from discord.ext import commands
 import pretty_help
-
+from keep_alive import run
+run()
 
 
 bot = commands.Bot(
