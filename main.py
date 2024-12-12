@@ -3,9 +3,14 @@ import settings
 from settings import utils
 from discord.ext import commands
 import pretty_help
-from keep_alive import run
-run()
+from keep_alive import run  
+import threading  
 
+def run_flask():
+    run()
+
+flask_thread = threading.Thread(target=run_flask)
+flask_thread.start()
 
 bot = commands.Bot(
     command_prefix=settings.COMMAND_PREFIX, 
