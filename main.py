@@ -12,9 +12,6 @@ from cogs.tickets import CreateButton, CloseButton, TrashButton
 def run_flask():
     run()
 
-# Start Flask app in a separate thread
-# flask_thread = threading.Thread(target=run_flask)
-# flask_thread.start()
 
 bot = commands.Bot(
     command_prefix=settings.COMMAND_PREFIX, 
