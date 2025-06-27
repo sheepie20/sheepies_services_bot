@@ -8,10 +8,6 @@ from keep_alive import run
 from cogs.tickets import CreateButton, CloseButton, TrashButton
 
 
-# Function to run the Flask app
-def run_flask():
-    run()
-
 
 bot = commands.Bot(
     command_prefix=settings.COMMAND_PREFIX, 
