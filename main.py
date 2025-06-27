@@ -3,9 +3,18 @@ import settings
 from settings import utils
 from discord.ext import commands
 import pretty_help
+import threading
 from keep_alive import run
-run()
+from cogs.tickets import CreateButton, CloseButton, TrashButton
 
+
+# Function to run the Flask app
+def run_flask():
+    run()
+
+# Start Flask app in a separate thread
+# flask_thread = threading.Thread(target=run_flask)
+# flask_thread.start()
 
 bot = commands.Bot(
     command_prefix=settings.COMMAND_PREFIX, 
@@ -19,6 +28,9 @@ async def on_ready():
     await utils.init_db()
     await bot.load_extension("cogs.tickets")
     await bot.load_extension("cogs.owner")
+    bot.add_view(CreateButton(bot))
+    bot.add_view(CloseButton(bot))
+    bot.add_view(TrashButton())
     await bot.change_presence(activity=discord.CustomActivity(name='👑Visit #hire-sheepie to hire!'))
     try:
         synced = await bot.tree.sync()

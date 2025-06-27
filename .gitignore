@@ -1,3 +1,6 @@
 .venv/
-ticket_system.db
+*.db
 .env
+__pycache__/*
+__pycache__
+*.pyc

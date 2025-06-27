@@ -44,13 +44,10 @@ async def create_ticket(interaction: discord.Interaction, bot: commands.Bot, cod
 
     if code:
         embed.add_field(name="Product Code", value=code, inline=False)
-    elif details:
-        embed.add_field(name="Package", value=details.get("package", "N/A"), inline=False)
-        embed.add_field(name="Hosting", value=details.get("hosting", "N/A"), inline=False)
-        embed.add_field(name="Budget", value=details.get("budget", "N/A"), inline=False)
-        embed.add_field(name="Description", value=details.get("description", "N/A"), inline=False)
+    else:
+        embed.add_field(name="Product Code", value="No code provided.", inline=False)
 
-    await channel.send(embed=embed, view=CloseButton(bot))
+    await channel.send("Optionally aquire a product code at https://sheepiestechservices.pythonanywhere.com/contact " if not code else "", embed=embed, view=CloseButton(bot))
     await interaction.followup.send(f"Created your ticket in {channel.mention}", ephemeral=True)
 
     log_channel = interaction.guild.get_channel(log_channel_id)
@@ -88,20 +85,21 @@ async def get_transcript(channel: discord.TextChannel, bot: commands.Bot):
             content_type='text/html'
         )
         
-        async with session.post("https://ticket-uploads.onrender.com/upload", data=form_data) as response:
+        async with session.post("https://sheepie.pythonanywhere.com/upload", data=form_data) as response:
             response_text = await response.text()
             if response.status == 200:
                 _, _, _, log_channel_id = await get_ticket_settings(channel.guild.id)
                 log_channel = channel.guild.get_channel(log_channel_id)
                 embed = discord.Embed(
-                    title=f"Ticket ({channel.name}) closed.",
-                    description=f"Click [here](https://ticket-uploads.onrender.com/uploads/{transcript_filename}) for the transcript.",
+                    title="Ticket closed.",
+                    description=f"Click [here](https://sheepie.pythonanywhere.com/uploads/{transcript_filename}) for the transcript.",
                     color=discord.Color.red()
                 )
-                await log_channel.send(embed=embed)
+                await log_channel.send(f"{channel.name}",embed=embed)
             else:
                 print(f"Failed to upload file. Status code: {response.status}")
                 print(f"Response text: {response_text}")
+
 
 class CreateButton(View):
     def __init__(self, bot: commands.Bot):
@@ -157,106 +155,17 @@ class TrashButton(View):
 
         await asyncio.sleep(3)
 
-        settings = await get_ticket_settings(interaction.guild.id)
-        log_channel_id = settings[3]
-
-        log_channel = interaction.guild.get_channel(log_channel_id)
-        if log_channel:
-            await log_channel.send(f"Ticket **{interaction.channel.name}** deleted by {interaction.user.mention}")
-
         await interaction.channel.delete()
-
-class Tickets(commands.Cog):
-    def __init__(self, bot: commands.Bot) -> None:
-        self.bot: commands.Bot = bot
-
-    @commands.hybrid_group(name="tickets", description="Ticket management commands", invoke_without_command=True)
-    @commands.has_permissions(administrator=True)
-    async def tickets_group(self, ctx: commands.Context):
-        """Default response when no subcommand is provided."""
-        await ctx.send("Use `/tickets setup`, `/tickets panel`, or `/tickets reset-settings` to manage the ticket system. For more help, type `/tickets help`")
-
-    @tickets_group.command(name="setup", description="Setup ticket system.")
-    @commands.has_permissions(administrator=True)
-    async def setup_tickets(self, ctx: commands.Context, admin_role: discord.Role):
-        await ctx.defer()
-        settings = await get_ticket_settings(ctx.guild.id)
-        if settings:
-            await ctx.reply("Ticket system is already set up for this server. Use `/tickets reset-settings` to reset the configuration if needed.", ephemeral=True)
-            return
-
-        open_category = await ctx.guild.create_category("Opened Tickets")
-        closed_category = await ctx.guild.create_category("Closed Tickets")
-
-        overwrites = {
-            ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            admin_role: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        }
-
-        log_channel = discord.utils.get(ctx.guild.text_channels, name="transcripts")
-        
-        if log_channel:
-            await log_channel.edit(overwrites=overwrites)
-            await ctx.send(f"Found existing channel {log_channel.mention}. Updated its permissions.")
-        else:
-            log_channel = await ctx.guild.create_text_channel("transcripts", overwrites=overwrites)
-
-        async with asqlite.connect("ticket_system.db") as db:
-            await db.execute('''
-                INSERT OR REPLACE INTO ticket_settings (guild_id, admin_role_id, opened_tickets_category_id, closed_tickets_category_id, log_channel_id)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (ctx.guild.id, admin_role.id, open_category.id, closed_category.id, log_channel.id))
-            await db.commit()
-
-        embed = discord.Embed(
-            title="Success.",
-            description=f"Created categories called \"Opened Tickets\" and \"Closed Tickets\"\nUsing {log_channel.mention} for transcripts.",
-            color=discord.Color.green()
-        )
-        await ctx.reply(embed=embed)
-
-    @tickets_group.command(name="panel", description="Display ticket panel.")
-    @commands.has_permissions(administrator=True)
-    async def ticket_panel(self, ctx: commands.Context):
-        await ctx.reply("Sending panel...", ephemeral=True)
-        await ctx.channel.send(
-            embed=discord.Embed(
-                description="Press the button to hire Sheepie!"
-            ),
-            view=CreateButton(self.bot)
-        )
-        
-    @tickets_group.command(name="reset-settings", description="Clear the ticket system settings for this server.")
-    @commands.has_permissions(administrator=True)
-    async def clear_tickets(self, ctx: commands.Context):
-        async with asqlite.connect("ticket_system.db") as db:
-            await db.execute('DELETE FROM ticket_settings WHERE guild_id = ?', (ctx.guild.id,))
-            await db.commit()
-
-        await ctx.send("Ticket system settings have been cleared for this server.")
-
-    @tickets_group.command(name="help", description="Tutorial for setting-up the ticket system")
-    async def tickets_help(self, ctx: commands.Context):
-        embed = discord.Embed(
-            title="Ticket system.",
-            description="Run ``/tickets setup [admin-role]`` to setup. \nIf you want to reset the settings, type ``/tickets reset-settings``\nTo send the button to create a ticket, type ``/tickets panel``"
-        )
-        await ctx.send(embed=embed)
-    
-    @tickets_group.command(name="open", description="Open a ticket")
-    async def open_ticket(self, ctx: commands.Context):
-        code_modal = CodeEntryModal()
-        await ctx.send_modal(code_modal)
 
 class PackageModal(Modal):
     def __init__(self, bot: commands.Bot, code: str = None):
         super().__init__(title="Ticket Details")
         self.bot = bot
         self.code = code
-        self.package = TextInput(label="Package", placeholder="Enter the package you want", required=True)
-        self.hosting = TextInput(label="Hosting Required? (Yes/No)", placeholder="Do you need hosting?", required=True)
-        self.budget = TextInput(label="Budget", placeholder="Enter your budget", required=True)
-        self.description = TextInput(label="Project Description", placeholder="Describe your project", style=discord.TextStyle.paragraph, required=True)
+        self.package = TextInput(label="Package", placeholder="Enter the package you want")
+        self.hosting = TextInput(label="Hosting Required? (Yes/No)", placeholder="Do you need hosting?")
+        self.budget = TextInput(label="Budget", placeholder="Enter your budget")
+        self.description = TextInput(label="Project Description", placeholder="Describe your project", style=discord.TextStyle.paragraph)
 
         self.add_item(self.package)
         self.add_item(self.hosting)
@@ -282,10 +191,8 @@ class DetailsButtonView(View):
 
     @button(label="Add Project Details", style=discord.ButtonStyle.blurple, custom_id="add_project_details")
     async def open_package_modal(self, interaction: discord.Interaction, button: Button):
-        # Open the second modal
-        await interaction.response.send_modal(PackageModal(self.bot, self.code))
-
-
+        await interaction.response.send_message("Creating your ticket with provided details...", ephemeral=True)
+        await create_ticket(interaction, self.bot, code=self.code)
 
 class CodeEntryModal(Modal):
     def __init__(self, bot: commands.Bot):
@@ -297,16 +204,15 @@ class CodeEntryModal(Modal):
     async def on_submit(self, interaction: discord.Interaction):
         code = self.code_input.value
 
-        # Send a follow-up message with a button to proceed
-        embed = discord.Embed(
-            description="If you'd like to provide more details about your project, click the button below to continue.",
-            color=discord.Color.blue()
-        )
-        await interaction.response.send_message(embed=embed, view=DetailsButtonView(self.bot, code=code), ephemeral=True)
+        await interaction.response.send_message("Creating your ticket with provided details...", ephemeral=True)
+        await create_ticket(interaction, self.bot, code=code)
 
-
-
-
+        # # Send a follow-up message with a button to proceed
+        # embed = discord.Embed(
+        #     description="If you'd like to provide more details about your project, click the button below to continue.",
+        #     color=discord.Color.blue()
+        # )
+        # await interaction.response.send_message(embed=embed, view=DetailsButtonView(self.bot, code=code), ephemeral=True)
 
 async def handle_code_submission(interaction: discord.Interaction, code):
     if code:
@@ -437,6 +343,131 @@ class PackageSelectionModal(Modal):
         log_channel = interaction.guild.get_channel(log_channel_id)
         if log_channel:
             await log_channel.send(f"Ticket created by {interaction.user.mention} in {channel.mention} ({channel.name})")
+
+
+class Tickets(commands.Cog):
+    def __init__(self, bot: commands.Bot) -> None:
+        self.bot: commands.Bot = bot
+        self.target_guild_id = 1260472377054330930
+        self.target_channel_id = 1260832196277698611
+        print(f"Tickets Cog initialized for guild {self.target_guild_id}")  # Add this line
+
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        print("Tickets on_ready method called!")  # Debug print
+        print(f"Bot is ready. Logged in as {self.bot.user}")  # Verify bot connection
+        
+        # Find the specific guild and channel
+        guild = self.bot.get_guild(self.target_guild_id)
+        if not guild:
+            print(f"Could not find guild with ID {self.target_guild_id}")
+            return
+        
+        channel = guild.get_channel(self.target_channel_id)
+        if not channel:
+            print(f"Could not find channel with ID {self.target_channel_id}")
+            return
+        
+        try:
+            # Individual message deletion using a for loop
+            while True:
+                messages = await channel.history(limit=100).flatten()
+                if not messages:
+                    break
+                
+                for message in messages:
+                    await message.delete()
+                
+            print(f"Cleared all messages in #{channel.name}")
+        except Exception as e:
+            print(f"Failed to clear messages in #{channel.name}: \n{e}")
+
+
+
+    @commands.hybrid_group(name="tickets", description="Ticket management commands", invoke_without_command=True)
+    @commands.has_permissions(administrator=True)
+    async def tickets_group(self, ctx: commands.Context):
+        """Default response when no subcommand is provided."""
+        await ctx.send("Use `/tickets setup`, `/tickets panel`, or `/tickets reset-settings` to manage the ticket system. For more help, type `/tickets help`")
+
+    @tickets_group.command(name="setup", description="Setup ticket system.")
+    @commands.has_permissions(administrator=True)
+    async def setup_tickets(self, ctx: commands.Context, admin_role: discord.Role):
+        await ctx.defer()
+        settings = await get_ticket_settings(ctx.guild.id)
+        if settings:
+            await ctx.reply("Ticket system is already set up for this server. Use `/tickets reset-settings` to reset the configuration if needed.", ephemeral=True)
+            return
+
+        open_category = await ctx.guild.create_category("Opened Tickets")
+        closed_category = await ctx.guild.create_category("Closed Tickets")
+
+        overwrites = {
+            ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            admin_role: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+
+        log_channel = discord.utils.get(ctx.guild.text_channels, name="transcripts")
+        
+        if log_channel:
+            await log_channel.edit(overwrites=overwrites)
+            await ctx.send(f"Found existing channel {log_channel.mention}. Updated its permissions.")
+        else:
+            log_channel = await ctx.guild.create_text_channel("transcripts", overwrites=overwrites)
+
+        async with asqlite.connect("ticket_system.db") as db:
+            await db.execute('''
+                INSERT OR REPLACE INTO ticket_settings (guild_id, admin_role_id, opened_tickets_category_id, closed_tickets_category_id, log_channel_id)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (ctx.guild.id, admin_role.id, open_category.id, closed_category.id, log_channel.id))
+            await db.commit()
+
+        embed = discord.Embed(
+            title="Success.",
+            description=f"Created categories called \"Opened Tickets\" and \"Closed Tickets\"\nUsing {log_channel.mention} for transcripts.",
+            color=discord.Color.green()
+        )
+        await ctx.reply(embed=embed)
+
+    @tickets_group.command(name="panel", description="Display ticket panel.")
+    @commands.has_permissions(administrator=True)
+    async def ticket_panel(self, ctx: commands.Context):
+        await ctx.reply("Sending panel...", ephemeral=True)
+        await ctx.channel.send(
+            embed=discord.Embed(
+                description="Press the button to hire Sheepie!"
+            ),
+            view=CreateButton(self.bot)
+        )
+        
+    @tickets_group.command(name="reset-settings", description="Clear the ticket system settings for this server.")
+    @commands.has_permissions(administrator=True)
+    async def clear_tickets(self, ctx: commands.Context):
+        async with asqlite.connect("ticket_system.db") as db:
+            await db.execute('DELETE FROM ticket_settings WHERE guild_id = ?', (ctx.guild.id,))
+            await db.commit()
+
+        await ctx.send("Ticket system settings have been cleared for this server.")
+
+    @tickets_group.command(name="help", description="Tutorial for setting-up the ticket system")
+    async def tickets_help(self, ctx: commands.Context):
+        embed = discord.Embed(
+            title="Ticket system.",
+            description="Run ``/tickets setup [admin-role]`` to setup. \nIf you want to reset the settings, type ``/tickets reset-settings``\nTo send the button to create a ticket, type ``/tickets panel``"
+        )
+        await ctx.send(embed=embed)
+    
+    @tickets_group.command(name="open", description="Open a ticket")
+    async def open_ticket(self, ctx: commands.Context):
+        await ctx.channel.send(
+            embed=discord.Embed(
+                description="Press the button to hire Sheepie!"
+            ),
+            view=CreateButton(self.bot),
+            ephemeral=True
+        )
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Tickets(bot))
